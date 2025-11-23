@@ -8,7 +8,7 @@ interface FormFieldProps<T extends FieldValues> {
 
     control:Control<T>
     name: Path<T>;
-    Label: string;
+    label: string;
     placeholder?: string;
     type?: 'text' | 'password' | 'email' | 'file'
 }
