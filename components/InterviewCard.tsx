@@ -8,7 +8,7 @@ import DisplayTechIcons from "@/components/DisplayTechicons";
 
 
 
-const InterviewCard = ({interviewId, userId,role,type,techstack,
+const InterviewCard = ({id, userId,role,type,techstack,
                        createdAt}:InterviewCardProps) => {
 
 
@@ -64,8 +64,8 @@ const InterviewCard = ({interviewId, userId,role,type,techstack,
 
                             <Button className='btn-primary'>
                                 <Link href={ feedback
-                                ? `/interview/${interviewId}/feedback`
-                                    : `/interview/${interviewId}/`
+                                ? `/interview/${id}/feedback`
+                                    : `/interview/${id}/`
                                 }>
 
                                     {feedback ? 'Check Feedback': 'View Interview'}

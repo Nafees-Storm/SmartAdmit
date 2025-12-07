@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { vapi } from "@/lib/vapi.sdk";
+import {interviewer} from "@/constants ";
 
 enum CallStatus {
     INACTIVE = "INACTIVE",
@@ -22,9 +23,11 @@ interface AgentProps {
     userName: string;
     userId: string;
     type: "generate" | "mock";
+    questions?: string[];
+    interviewId: string;
 }
 
-const Agent: React.FC<AgentProps> = ({ userName, userId, type }) => {
+const Agent: React.FC<AgentProps> = ({ userName, userId, type,interviewId, questions  }) => {
     const router = useRouter();
 
     const [isSpeaking, setIsSpeaking] = useState(false);
@@ -164,31 +167,82 @@ const Agent: React.FC<AgentProps> = ({ userName, userId, type }) => {
         };
     }, []);
 
+    const handleGenerateFeedback = async (messages: SavedMessage[]) => {
+        console.log("handleGenerateFeedback");
+
+        const {success, id} = {
+
+            success :true,
+            id : 'feedback-id'
+        }
+
+        if (success && id) {
+            router.push(`/interview/${interviewId}/feedback`);
+        } else {
+            console.log("Error saving feedback");
+            router.push("/");
+        }
+    };
+
     // When the call finishes, generate the interview once, then redirect
     useEffect(() => {
-        if (callStatus === CallStatus.FINISHED && !hasGeneratedRef.current) {
-            hasGeneratedRef.current = true;
+        // Only run once per call, when it actually finishes
+        if (callStatus !== CallStatus.FINISHED || hasGeneratedRef.current) return;
 
+        hasGeneratedRef.current = true;
+
+        if (type === "generate") {
+            // 1) Interview generation flow (your current behaviour)
             (async () => {
                 await generateInterview();
                 router.push("/"); // or "/interviews"
             })();
+        } else {
+            // 2) Feedback / mock interview flow (matches tutorial idea)
+            handleGenerateFeedback(messages);
         }
-    }, [callStatus, router]);
+    }, [callStatus, type, messages, router]);
 
     const handleCall = async () => {
         try {
+            // Reset “already generated” flag for this call
+            hasGeneratedRef.current = false;
             setCallStatus(CallStatus.CONNECTING);
 
-            await vapi.start(
-                process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!, // must be set in .env.local
-                {
-                    variableValues: {
-                        username: userName ?? "",
-                        userid: userId ?? "",
-                    },
+            // ---------- GENERATE MODE (create interview) ---------- //
+            if (type === "generate") {
+                // Use your config-collector assistant (asks role, type, level, etc.)
+                await vapi.start(
+                    process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID!, // must exist in .env.local
+                    {
+                        variableValues: {
+                            username: userName ?? "",
+                            userid: userId ?? "",
+                        },
+                    }
+                );
+
+                // When the call finishes, your useEffect will:
+                // - call generateInterview()
+                // - redirect with router.push("/")
+
+                // ---------- MOCK / FEEDBACK MODE (use saved questions) ---------- //
+            } else {
+                let formattedQuestions = "";
+
+                if (questions && questions.length > 0) {
+                    formattedQuestions = questions
+                        .map((question) => `- ${question}`)
+                        .join("\n");
                 }
-            );
+
+                // Use the `interviewer` assistant you defined in index.ts
+                await vapi.start(interviewer, {
+                    variableValues: {
+                        questions: formattedQuestions,
+                    },
+                });
+            }
         } catch (e) {
             console.error("Error starting Vapi call", e);
             setCallStatus(CallStatus.INACTIVE);
