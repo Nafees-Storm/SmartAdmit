@@ -155,40 +155,22 @@ End the conversation on a polite and positive note.
   },
 };
 
-export const feedbackSchema = z.object({
-  totalScore: z.number(),
-  categoryScores: z.tuple([
-    z.object({
-      name: z.literal("Communication Skills"),
-      score: z.number(),
-      comment: z.string(),
-    }),
-    z.object({
-      name: z.literal("Technical Knowledge"),
-      score: z.number(),
-      comment: z.string(),
-    }),
-    z.object({
-      name: z.literal("Problem Solving"),
-      score: z.number(),
-      comment: z.string(),
-    }),
-    z.object({
-      name: z.literal("Cultural Fit"),
-      score: z.number(),
-      comment: z.string(),
-    }),
-    z.object({
-      name: z.literal("Confidence and Clarity"),
-      score: z.number(),
-      comment: z.string(),
-    }),
-  ]),
-  strengths: z.array(z.string()),
-  areasForImprovement: z.array(z.string()),
-  finalAssessment: z.string(),
-});
 
+export const feedbackSchema = z.object({
+    totalScore: z.number().min(0).max(100),
+
+    categoryScores: z.array(
+        z.object({
+            category: z.string(),             // e.g. "Communication Skills"
+            score: z.number().min(0).max(100),
+            comment: z.string(),              // short explanation for this category
+        })
+    ),
+
+    strengths: z.array(z.string()),        // bullet points of strengths
+    areasForImprovement: z.array(z.string()), // bullet points of weaknesses
+    finalAssessment: z.string(),           // paragraph / short text
+});
 export const interviewCovers = [
   "/adobe.png",
   "/amazon.png",
