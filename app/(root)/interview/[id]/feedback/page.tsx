@@ -135,7 +135,7 @@ const Page = async ({ params }: RouteParams) => {
                 </p>
             </div>
             <div className="flex justify-center mt-12 mb-16">
-                <Link href="/interview">
+                <Link href="/">
                     <button
                         className="
                 px-8 py-3 rounded-xl font-semibold text-white
