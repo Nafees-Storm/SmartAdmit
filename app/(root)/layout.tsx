@@ -1,29 +1,36 @@
-import {ReactNode} from "react";
+import { ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import {isAuthenticated} from "@/lib/actions/auth.action";
-import {redirect} from "next/navigation";
+import { isAuthenticated, logout } from "@/lib/actions/auth.action";
+import { redirect } from "next/navigation";
 
-const RootLayout = async  ({children} :{children : ReactNode}) => {
-
-        const isUserAuthenticated = await isAuthenticated();
-        if(!isUserAuthenticated) redirect('/sign-in');
+const RootLayout = async ({ children }: { children: ReactNode }) => {
+    const isUserAuthenticated = await isAuthenticated();
+    if (!isUserAuthenticated) redirect("/sign-in");
 
     return (
-        <div className = 'root-layout' >
-            <nav>
-                <Link href='/' className='flex items-center gap-2'>
-    
+        <div className="root-layout">
+            <nav className="flex items-center justify-between">
+                {/* Left: logo */}
+                <Link href="/" className="flex items-center gap-2">
                     <Image src="/logo.svg" alt="logo" width={38} height={32} />
-
-                    <h2 className="text-primary-100" >PrepWise</h2>
-                    
+                    <h2 className="text-primary-100">PrepWise</h2>
                 </Link>
-                
-            </nav>
-            {children}
 
+
+                <form action={logout}>
+                    <button
+                        type="submit"
+                        className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 hover:bg-red-700 text-white transition-colors"
+                    >
+                        Logout
+                    </button>
+                </form>
+            </nav>
+
+            {children}
         </div>
-    )
-}
+    );
+};
+
 export default RootLayout;

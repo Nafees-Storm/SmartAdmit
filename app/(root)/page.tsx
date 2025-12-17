@@ -82,6 +82,22 @@ const Page= async () => {
                 </div>
 
             </section>
+
+            {/* 🟢 Document Check Button at the bottom of main page */}
+            <section className="flex justify-center mt-10 mb-10">
+                <Button
+                    asChild
+                    className="
+            px-8 py-3 rounded-xl font-semibold
+            bg-gradient-to-r from-indigo-500 to-purple-600
+            hover:from-purple-600 hover:to-indigo-500
+            text-white shadow-lg shadow-indigo-800/30
+            transition-all duration-300 hover:scale-105
+          "
+                >
+                    <Link href="/document-check">Document Check</Link>
+                </Button>
+            </section>
         </>
     )
 }
