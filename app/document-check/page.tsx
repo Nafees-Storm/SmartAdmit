@@ -197,18 +197,34 @@ export default function DocumentCheckPage() {
             const contentType = res.headers.get("content-type") || "";
             if (!contentType.includes("application/json")) throw new Error(text);
 
-            const data = JSON.parse(text);
-            console.log("verify response:", data);
+            const parsed = JSON.parse(text);
 
+// unwrap array
+            let data: any = Array.isArray(parsed) ? parsed[0] : parsed;
+
+// ✅ handle double-encoded JSON (n8n sometimes returns a JSON string)
+            if (typeof data === "string") {
+                try {
+                    data = JSON.parse(data);
+                } catch {
+                    // keep as string if it truly isn't JSON
+                }
+            }
+
+// ✅ if response is wrapped like { body: {...} }
+            if (data?.body && typeof data.body === "object") {
+                data = data.body;
+            }
+
+// update state
             setResult2(data);
 
-            // ✅ FIX: Move to Step 3 when offer is returned OR stage is offer-generated
-            if (
-                data?.success === true &&
-                (data?.offer?.offerLetterHtml || data?.stage === "offer-generated")
-            ) {
+// ✅ move to step 3 if offer is present
+            if (data?.success === true && (data?.offer?.offerLetterHtml || data?.stage === "offer-generated")) {
                 setStep(3);
             }
+
+
         } catch (err) {
             console.error(err);
             setResult2({
@@ -308,7 +324,8 @@ export default function DocumentCheckPage() {
         );
     };
 
-    const hasOffer = step >= 3 && !!result2?.offer?.offerLetterHtml;
+    const hasOffer = !!result2?.offer?.offerLetterHtml;
+
 
     return (
         <div className="max-w-2xl mx-auto mt-10 flex flex-col gap-6">
@@ -593,6 +610,9 @@ export default function DocumentCheckPage() {
             </div>
 
             {/* ---------------- Step 3 ---------------- */}
+
+
+
             {hasOffer && (
                 <div className="rounded-xl border border-white/10 bg-white/5 p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -651,6 +671,8 @@ export default function DocumentCheckPage() {
                 </div>
             )}
 
+
+
             {/* Final status box */}
             <div className="rounded-xl border border-white/10 bg-white/5 p-5">
                 <p className="text-slate-300 mb-2">Step 3: Final Status</p>
@@ -667,6 +689,8 @@ export default function DocumentCheckPage() {
                     </div>
                 )}
             </div>
+
         </div>
+
     );
 }
