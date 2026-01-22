@@ -39,7 +39,7 @@ type VerifyResult =
         studentId?: string;
         issueDate?: string;
         offerLetterHtml?: string;
-        idCardDataUrl?: string; // base64 image
+        idCardDataUrl?: string;
     };
 };
 
@@ -68,7 +68,8 @@ export default function DocumentCheckPage() {
 
     // Program inputs (step 2)
     const [programName, setProgramName] = useState("");
-    const [totalFee, setTotalFee] = useState<number | "">("");
+    const [totalFee, setTotalFee] = useState<number | "">(14000);
+
     const [depositFee, setDepositFee] = useState<number | "">("");
 
     // Step 2 fields (docs)
@@ -83,7 +84,7 @@ export default function DocumentCheckPage() {
 
     // Refs for PDF capture
     const offerRef = useRef<HTMLDivElement | null>(null);
-    const idCardRef = useRef<HTMLImageElement | null>(null);
+    const idCardRef = useRef<HTMLDivElement | null>(null);
 
     // --- Step 1 submit (workflow-1) ---
     const onSubmitStep1 = async (e: React.FormEvent) => {
@@ -104,7 +105,6 @@ export default function DocumentCheckPage() {
             });
 
             const text = await res.text();
-
             const contentType = res.headers.get("content-type") || "";
             if (!contentType.includes("application/json")) throw new Error(text);
 
@@ -139,7 +139,7 @@ export default function DocumentCheckPage() {
         setLoading2(true);
         setResult2(null);
 
-        // File-size validation (keep this)
+        // File-size validation
         const files = [fscFile, cnicFile, passportFile, ieltsFile];
         if (files.some((f) => f && f.size > MAX_MB * 1024 * 1024)) {
             setResult2({
@@ -150,7 +150,7 @@ export default function DocumentCheckPage() {
             return;
         }
 
-        // Optional: show local warning immediately (but still continue to call API)
+        // Optional local warning, but STILL call API
         const missingDocs = [
             !fscFile ? "FSC Marksheet" : null,
             !cnicFile ? "CNIC" : null,
@@ -165,7 +165,6 @@ export default function DocumentCheckPage() {
                 message: `Missing documents: ${missingDocs.join(", ")}`,
                 missingDocs,
             });
-            // IMPORTANT: we still continue and call API to let n8n handle missing-docs branch
         }
 
         try {
@@ -174,14 +173,13 @@ export default function DocumentCheckPage() {
             fd.append("programName", programName);
             fd.append("totalFee", String(totalFee === "" ? 0 : totalFee));
             fd.append("depositFee", String(depositFee === "" ? 0 : depositFee));
-
             fd.append("claimedFscPercentage", String(percentage ?? 0));
             fd.append(
                 "claimedIeltsBand",
                 String(claimedIeltsBand === "" ? 0 : claimedIeltsBand)
             );
 
-            // Append ONLY the files that exist
+            // Append only existing files
             if (fscFile) fd.append("fsc", fscFile);
             if (cnicFile) fd.append("cnic", cnicFile);
             if (passportFile) fd.append("passport", passportFile);
@@ -193,38 +191,37 @@ export default function DocumentCheckPage() {
             });
 
             const text = await res.text();
-
             const contentType = res.headers.get("content-type") || "";
             if (!contentType.includes("application/json")) throw new Error(text);
 
             const parsed = JSON.parse(text);
 
-// unwrap array
+            // unwrap array
             let data: any = Array.isArray(parsed) ? parsed[0] : parsed;
 
-// ✅ handle double-encoded JSON (n8n sometimes returns a JSON string)
+            // handle double-encoded JSON
             if (typeof data === "string") {
                 try {
                     data = JSON.parse(data);
                 } catch {
-                    // keep as string if it truly isn't JSON
+                    // keep string
                 }
             }
 
-// ✅ if response is wrapped like { body: {...} }
+            // handle { body: {...} }
             if (data?.body && typeof data.body === "object") {
                 data = data.body;
             }
 
-// update state
             setResult2(data);
 
-// ✅ move to step 3 if offer is present
-            if (data?.success === true && (data?.offer?.offerLetterHtml || data?.stage === "offer-generated")) {
+            // ✅ move to step 3 when offer generated
+            if (
+                data?.success === true &&
+                (data?.offer?.offerLetterHtml || data?.stage === "offer-generated")
+            ) {
                 setStep(3);
             }
-
-
         } catch (err) {
             console.error(err);
             setResult2({
@@ -242,12 +239,48 @@ export default function DocumentCheckPage() {
             if (!offerRef.current) return;
 
             const html2canvas = (await import("html2canvas")).default;
-            const { jsPDF } = await import("jspdf");
+            const jspdfModule: any = await import("jspdf");
+            const jsPDF = jspdfModule.jsPDF || jspdfModule.default;
 
             const canvas = await html2canvas(offerRef.current, {
                 scale: 2,
-                useCORS: true,
                 backgroundColor: "#ffffff",
+                useCORS: true,
+
+                // ✅ Fix: remove unsupported lab() colors
+                onclone: (doc) => {
+                    const all = doc.querySelectorAll<HTMLElement>("*");
+                    all.forEach((el) => {
+                        const style = doc.defaultView?.getComputedStyle(el);
+                        if (!style) return;
+
+                        // any style values containing "lab(" will crash html2canvas
+                        const propsToCheck = [
+                            "color",
+                            "backgroundColor",
+                            "borderTopColor",
+                            "borderRightColor",
+                            "borderBottomColor",
+                            "borderLeftColor",
+                            "boxShadow",
+                            "textShadow",
+                            "filter",
+                        ];
+
+                        propsToCheck.forEach((p) => {
+                            const v = (style as any)[p];
+                            if (typeof v === "string" && v.includes("lab(")) {
+                                // replace with safe fallback
+                                if (p === "color") el.style.color = "#000";
+                                if (p === "backgroundColor") el.style.backgroundColor = "#fff";
+                                if (p.startsWith("border")) el.style.borderColor = "#ddd";
+                                if (p === "boxShadow") el.style.boxShadow = "none";
+                                if (p === "textShadow") el.style.textShadow = "none";
+                                if (p === "filter") el.style.filter = "none";
+                            }
+                        });
+                    });
+                },
             });
 
             const imgData = canvas.toDataURL("image/png");
@@ -264,35 +297,74 @@ export default function DocumentCheckPage() {
         }
     };
 
+
     const downloadIdCardPDF = async () => {
         try {
             if (!idCardRef.current) return;
 
-            const { jsPDF } = await import("jspdf");
+            const html2canvas = (await import("html2canvas")).default;
+            const jspdfModule: any = await import("jspdf");
+            const jsPDF = jspdfModule.jsPDF || jspdfModule.default;
 
-            const imgEl = idCardRef.current;
-            const src = imgEl.src;
+            const canvas = await html2canvas(idCardRef.current, {
+                scale: 2,
+                backgroundColor: "#ffffff",
+                useCORS: true,
 
-            if (!src) {
-                alert("ID card image is empty.");
-                return;
-            }
+                // ✅ Fix: remove unsupported lab() colors
+                onclone: (doc) => {
+                    const all = doc.querySelectorAll<HTMLElement>("*");
+                    all.forEach((el) => {
+                        const style = doc.defaultView?.getComputedStyle(el);
+                        if (!style) return;
+
+                        const propsToCheck = [
+                            "color",
+                            "backgroundColor",
+                            "borderTopColor",
+                            "borderRightColor",
+                            "borderBottomColor",
+                            "borderLeftColor",
+                            "boxShadow",
+                            "textShadow",
+                            "filter",
+                        ];
+
+                        propsToCheck.forEach((p) => {
+                            const v = (style as any)[p];
+                            if (typeof v === "string" && v.includes("lab(")) {
+                                if (p === "color") el.style.color = "#000";
+                                if (p === "backgroundColor") el.style.backgroundColor = "#fff";
+                                if (p.startsWith("border")) el.style.borderColor = "#ddd";
+                                if (p === "boxShadow") el.style.boxShadow = "none";
+                                if (p === "textShadow") el.style.textShadow = "none";
+                                if (p === "filter") el.style.filter = "none";
+                            }
+                        });
+                    });
+                },
+            });
+
+            const imgData = canvas.toDataURL("image/png");
 
             const pdf = new jsPDF("p", "mm", "a4");
-            const pdfWidth = 100;
-            const pdfHeight = 60;
+
+            // card sizing
+            const pdfWidth = 100; // mm
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
             const pageWidth = pdf.internal.pageSize.getWidth();
             const x = (pageWidth - pdfWidth) / 2;
             const y = 40;
 
-            pdf.addImage(src, "PNG", x, y, pdfWidth, pdfHeight);
+            pdf.addImage(imgData, "PNG", x, y, pdfWidth, pdfHeight);
             pdf.save(`Student-ID-${result2?.offer?.studentId || "000000"}.pdf`);
         } catch (e) {
             console.error("ID PDF error:", e);
             alert("Failed to download Student ID PDF. Check console.");
         }
     };
+
 
     // --- UI helper ---
     const StepPill = ({ n, label }: { n: Step; label: string }) => {
@@ -325,7 +397,6 @@ export default function DocumentCheckPage() {
     };
 
     const hasOffer = !!result2?.offer?.offerLetterHtml;
-
 
     return (
         <div className="max-w-2xl mx-auto mt-10 flex flex-col gap-6">
@@ -387,8 +458,7 @@ export default function DocumentCheckPage() {
                     {percentage !== null && (
                         <div className="flex items-center justify-between">
                             <p className="text-sm text-slate-300">
-                                Current Percentage:{" "}
-                                <span className="font-semibold">{percentage}%</span>
+                                Current Percentage: <span className="font-semibold">{percentage}%</span>
                             </p>
 
                             <span
@@ -451,13 +521,9 @@ export default function DocumentCheckPage() {
                         <label className="text-sm text-slate-300">Total Program Fee (£)</label>
                         <input
                             type="number"
-                            className="bg-dark-300 rounded-lg px-3 py-2 outline-none"
                             value={totalFee}
-                            onChange={(e) => setTotalFee(e.target.value === "" ? "" : Number(e.target.value))}
-                            placeholder="e.g., 12000"
-                            disabled={!eligible}
-                            required
-                            min={0}
+                            readOnly
+                            className="bg-dark-300 rounded-lg px-3 py-2 outline-none opacity-80"
                         />
                     </div>
 
@@ -467,7 +533,9 @@ export default function DocumentCheckPage() {
                             type="number"
                             className="bg-dark-300 rounded-lg px-3 py-2 outline-none"
                             value={depositFee}
-                            onChange={(e) => setDepositFee(e.target.value === "" ? "" : Number(e.target.value))}
+                            onChange={(e) =>
+                                setDepositFee(e.target.value === "" ? "" : Number(e.target.value))
+                            }
                             placeholder="e.g., 2000"
                             disabled={!eligible}
                             required
@@ -610,9 +678,6 @@ export default function DocumentCheckPage() {
             </div>
 
             {/* ---------------- Step 3 ---------------- */}
-
-
-
             {hasOffer && (
                 <div className="rounded-xl border border-white/10 bg-white/5 p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -637,8 +702,8 @@ export default function DocumentCheckPage() {
                         </div>
                     </div>
 
-                    {/* Offer Letter */}
-                    <div className="bg-white text-black rounded-xl p-5 mt-4" ref={offerRef}>
+                    {/* Offer Letter (PDF uses this ref) */}
+                    <div className="bg-blue-950 text-white rounded-xl p-5 mt-4" ref={offerRef}>
                         <div
                             dangerouslySetInnerHTML={{
                                 __html: result2?.offer?.offerLetterHtml || "",
@@ -646,32 +711,54 @@ export default function DocumentCheckPage() {
                         />
                     </div>
 
-                    {/* ID Card */}
+                    {/* ID Card (PDF uses THIS ref) */}
+
                     <p className="text-slate-200 font-semibold mt-6 mb-3">🪪 Digital Student ID Card</p>
 
-                    {result2?.offer?.idCardDataUrl ? (
-                        <img
-                            ref={idCardRef}
-                            src={result2.offer.idCardDataUrl}
-                            alt="Student ID Card"
-                            className="w-full max-w-md rounded-xl border border-white/10"
-                        />
-                    ) : (
-                        <div className="text-sm text-slate-300">
-                            ID card image not available yet (idCardDataUrl is empty).
+                    <div ref={idCardRef} className="w-full max-w-md rounded-xl border border-white/10 overflow-hidden">
+                        <div className="bg-slate-900 text-white p-6">
+                            <p className="text-lg font-semibold">{result2?.offer?.universityName || "University of Bedfordshire"}</p>
+                            <p className="text-xs opacity-80 mt-1">Student ID Card</p>
+
+                            <div className="mt-5 space-y-2 text-sm">
+                                <p>
+                                    <span className="opacity-70">Name:</span>{" "}
+                                    <span className="font-semibold">{result2?.offer?.name || name || "Student"}</span>
+                                </p>
+                                <p>
+                                    <span className="opacity-70">Program:</span>{" "}
+                                    <span className="font-semibold">{result2?.offer?.programName || programName || "—"}</span>
+
+                                </p>
+                                <p>
+                                    <span className="opacity-70">ID:</span>{" "}
+                                    <span className="font-semibold">{result2?.offer?.studentId || "000000"}</span>
+                                </p>
+                                <p className="text-xs opacity-70 mt-4">
+                                    Issued: {result2?.offer?.issueDate || "—"}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Optional: if you still want to display idCardDataUrl image from n8n */}
+                    {result2?.offer?.idCardDataUrl && (
+                        <div className="mt-4">
+                            <p className="text-slate-300 text-sm mb-2">Generated image from n8n (optional):</p>
+                            <img
+                                src={result2.offer.idCardDataUrl}
+                                alt="Student ID Card (image)"
+                                className="w-full max-w-md rounded-xl border border-white/10"
+                            />
                         </div>
                     )}
 
                     <p className="text-slate-400 text-sm mt-3">
                         Student ID:{" "}
-                        <span className="text-slate-200 font-medium">
-              {result2?.offer?.studentId || "—"}
-            </span>
+                        <span className="text-slate-200 font-medium">{result2?.offer?.studentId || "—"}</span>
                     </p>
                 </div>
             )}
-
-
 
             {/* Final status box */}
             <div className="rounded-xl border border-white/10 bg-white/5 p-5">
@@ -689,8 +776,6 @@ export default function DocumentCheckPage() {
                     </div>
                 )}
             </div>
-
         </div>
-
     );
 }
